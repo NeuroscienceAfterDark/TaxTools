@@ -1,9 +1,8 @@
 import os
 import pandas as pd
 import numpy as np
-import math
 
-def get_csv_tax_table(tax_name,tax_year='2021/2022'):
+def get_csv_for_dataframe(tax_name,tax_year='2021/2022'):
     '''options for tax_name
             'income tax'
             'employee ni'
@@ -25,40 +24,40 @@ def get_csv_tax_table(tax_name,tax_year='2021/2022'):
     year = tax_table_log.loc[tax_table_log['tax name'] == tax_name, tax_year].item()
     tax = tax_table_log.loc[tax_table_log['tax name'] == tax_name, 'filename'].item()
     file_path = log_folder + year + tax
-    d = pd.read_csv(file_path)
-    return d
+    a = pd.read_csv(file_path)
+    return a
 
 #Universal Tax Tools LEVEL 0
 def create_table(tax_rates:pd.DataFrame):
     a = tax_rates.copy()
     a['threshold max'] = a['threshold min'].shift(-1)
     a = a[['threshold min','threshold max','rate']]
-    a = a.fillna(math.inf)
+    a = a.fillna(np.inf)
     return a
 
-def marginal(cash,table:pd.DataFrame):
-    a = table.copy()
+def marginal(cash,tax_table:pd.DataFrame):
+    a = tax_table.copy()
     a.loc[-1] = [cash,cash,np.NaN]
     a.index = a.index + 1
     a = a.sort_index()
     a = a.sort_values(by=['threshold min'])
     a['threshold max'] = a['threshold max'].sort_values().values
     a = a.reset_index(drop=True)
-    a['tax'] = (a['threshold max'] - a['threshold min']) * a['rate']
     cut = a.index[a['threshold max'] == cash].tolist()
     cut = cut[0]
-    a = a[a.index <= cut]
+    a = a[a.index <= cut].copy()
+    a['tax'] = (a['threshold max'] - a['threshold min']) * a['rate']
     a_total = a['tax'].sum()
     return a_total
 
-def marginalise_table(cash,table:pd.DataFrame):
+def marginalise(cash,table:pd.DataFrame):
     a = create_table(table)
     b = marginal(cash,a)
     return(b)
 
-def replace_threshold_rates(tax_table:pd.DataFrame,rate_table:pd.DataFrame):
-    a = tax_table.copy()
-    b = rate_table.copy()
+def replace_threshold_rates(threshold_table:pd.DataFrame,rates:pd.DataFrame):
+    a = threshold_table.copy()
+    b = rates.copy()
     a['rate'] = b['rate']
     return a
 
@@ -81,7 +80,7 @@ def adjust_allowance(salary,tax_allowance,tax_table:pd.DataFrame,tax_year):
     allowance_reduction = a.loc[1,'threshold min'] - tax_allowance
     a.loc[1,'threshold min'] = a.loc[1,'threshold min'] - allowance_reduction
     a.loc[2,'threshold min'] = a.loc[2,'threshold min'] - allowance_reduction
-    b = get_csv_tax_table('high income threshold',tax_year)
+    b = get_csv_for_dataframe('high income threshold',tax_year)
     c = interpret_single_df_value(b)
     if salary > c:
         change_range = c + 2 * tax_allowance
@@ -126,50 +125,50 @@ def create_student_loan_table(table:pd.DataFrame,plan):
 
 #UK Tax Laws LEVEL 2
 def employee_ni(salary,tax_code,tax_year):
-    a = get_csv_tax_table('employee ni',tax_year)
+    a = get_csv_for_dataframe('employee ni',tax_year)
     b = interpret_tax_code_ni_band(tax_code)
-    c = get_csv_tax_table('employee ni bands',tax_year)
+    c = get_csv_for_dataframe('employee ni bands',tax_year)
     d = adjust_ni_band(a,c,b)
-    e = marginalise_table(salary,d)
+    e = marginalise(salary,d)
     return e
 
 def income_tax(salary,tax_code,tax_year):
-    a = get_csv_tax_table('income tax',tax_year)
+    a = get_csv_for_dataframe('income tax',tax_year)
     b = interpret_tax_code_allowance(tax_code)
     c = adjust_allowance(salary,b,a,tax_year)
-    d = marginalise_table(salary,c)
+    d = marginalise(salary,c)
     return d
 
 def corporate_ni(salary,tax_code,tax_year):
-    a = get_csv_tax_table('corporate ni',tax_year)
-    b = get_csv_tax_table('corporate ni bands',tax_year)
+    a = get_csv_for_dataframe('corporate ni',tax_year)
+    b = get_csv_for_dataframe('corporate ni bands',tax_year)
     c = interpret_tax_code_ni_band(tax_code)
     d = adjust_ni_band(a,b,c)
-    e = marginalise_table(salary,d)
+    e = marginalise(salary,d)
     return e
 
 def corporation_tax(gross_profit,tax_year):
-    a = get_csv_tax_table('corporation tax',tax_year)
-    b = marginalise_table(gross_profit,a)
+    a = get_csv_for_dataframe('corporation tax',tax_year)
+    b = marginalise(gross_profit,a)
     return b
 
 def dividend_tax(salary,dividend,tax_code,tax_year):
-    a = get_csv_tax_table('income tax',tax_year)
+    a = get_csv_for_dataframe('income tax',tax_year)
     b = interpret_tax_code_allowance(tax_code)
     c = adjust_allowance(salary,b,a,tax_year)
-    d = get_csv_tax_table('dividend rates',tax_year)
+    d = get_csv_for_dataframe('dividend rates',tax_year)
     e = replace_threshold_rates(c,d)
-    f = get_csv_tax_table('dividend tax free allowance',tax_year)
+    f = get_csv_for_dataframe('dividend tax free allowance',tax_year)
     g = interpret_single_df_value(f)
     h = create_dividend_table(salary,g,e)
     take = salary + dividend
-    i = marginalise_table(take,h)
+    i = marginalise(take,h)
     return i
 
 def student_loans(cash,plan,tax_year):
-    a = get_csv_tax_table('student loans',tax_year)
+    a = get_csv_for_dataframe('student loans',tax_year)
     b = create_student_loan_table(a,plan)
-    c = marginalise_table(cash,b)
+    c = marginalise(cash,b)
     return c
 
 #UK Tax Calculation LEVEL 3
